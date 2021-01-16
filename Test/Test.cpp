@@ -182,7 +182,7 @@ public:
     void AddPiece(Tetromino piece) {
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
-                int pos = (y + piece.pos.y) * 4 + piece.pos.x + x;
+                int pos = (y + piece.pos.y) * size.x + piece.pos.x + x;
                 if (piece.ShapeCell(y, x))
                     pField[pos] = piece.ascii_index;
             }
