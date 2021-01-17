@@ -180,10 +180,10 @@ public:
     }
 
     void AddPiece(Tetromino piece) {
-        for (int x = 0; x < 4; x++) {
-            for (int y = 0; y < 4; y++) {
-                int pos = (y + piece.pos.y) * size.x + piece.pos.x + x;
-                if (piece.ShapeCell(y, x))
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                int pos = ((piece.pos.y + i) * size.x) + piece.pos.x + j;
+                if (piece.ShapeCell(j, i) == *L"X")
                     pField[pos] = piece.ascii_index;
             }
         }
@@ -282,27 +282,25 @@ public:
             inputArray[k] = (0x8000 & GetAsyncKeyState((unsigned char)(keyBinds[k]))) != 0;
         }
 
+        speedCounter++;
+
 
         if (*hardDrop) {
-            if (!hardDropHold)
-                NextPiece();
+            if (!hardDropHold) {
+                HardDrop();
+            }
             hardDropHold = true;
         }
         else hardDropHold = false;
 
-        if (*moveLeft && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(-1, 0))) {
+        if (*moveLeft && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(-1, 0)))
             currentPiece.pos.x -= 1;
-            //cout << currentPiece->pos.x << "\n";
-        }
-        if (*moveRight && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(1, 0))) {
+        
+        if (*moveRight && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(1, 0)))
             currentPiece.pos.x += 1;
-        }
-        if (*softDrop || speedCounter >= speed) {
-            speedCounter = 0;
-            if (DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(0, 1))) {
-                currentPiece.pos.y += 1;
-            }
-        }
+
+        if (*softDrop || speedCounter >= speed)
+            SoftDrop();
 
         // TODO: Implement kicking
         if (*rotateLeft) {
@@ -331,6 +329,25 @@ public:
             LockPiece();
     }
 
+
+    void HardDrop() {
+        bool inAir = true;
+        while (inAir) {
+            inAir = SoftDrop();
+        }
+        LockPiece();
+    }
+
+
+    bool SoftDrop() {
+        speedCounter = 0;
+        if (DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(0, 1))) {
+            currentPiece.pos.y += 1;
+            return true;
+        }
+        else return false;
+    }
+
     // TODO: These.
     void NextPiece() {
         currentPiece = pieceBag.NextPiece();
@@ -339,6 +356,7 @@ public:
 
     void LockPiece() {
         lockCounter = 0;
+        speedCounter = 0;
         // Add piece to the field.
         field.AddPiece(currentPiece);
 
@@ -348,24 +366,30 @@ public:
         NextPiece();
 
         // If pieces doesn't fit, game lost.
+        if (!DoesPieceFit(field, currentPiece.shape, currentPiece.pos)){
+            gameOver = true;
+        }
     }
 };
 
 
 int main()
 {
-    std::srand(10); // Initialize seed for random generation.
+    std::srand(11); // Initialize seed for random generation.
     TetrisController c = TetrisController();
 
-    wchar_t asciiSub[] = L" ABCDEFG=#"; // Each grid space is given a number. This number is substituted for a character in this string when rendering.
+    wchar_t asciiSub[] = L" IOLJSZT=#"; // Each grid space is given a number. This number is substituted for a character in this string when rendering.
     Vect2 screenSize = Vect2(80, 30);
+    
     // Create Screen Buffer
-    // This is not my code, and I don't understand exactly how it works. Just what it does.
     wchar_t *screen = new wchar_t[screenSize.x * screenSize.y];
     for (int i = 0; i < screenSize.x * screenSize.y; i++) screen[i] = L' ';
     HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
     SetConsoleActiveScreenBuffer(hConsole);
+    SetConsoleTextAttribute(hConsole, 3);
     DWORD dwBytesWritten = 0;
+    WORD color = 15;
+    COORD batchStartPos;
 
     while (!c.gameOver) {
         // Game timing
@@ -374,7 +398,7 @@ int main()
         // Game logic
         c.Update();
 
-        // Render output
+        // ========== Render output ==========
 
         // Draw the field.
         for (int x = 0; x < c.field.size.x; x++) {
@@ -397,15 +421,59 @@ int main()
             }
         }
 
-        // Draw upcoming
+        // TODO Draw a ghost of the piece.
 
-        // Draw score
+        // TODO Draw upcoming
 
-        // Draw hold
+        // TODO Draw score
 
-        // Draw controls
+        // TODO Draw hold
 
-        //bGameOver = true;
+        // Draw to console.
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
+
+        // Draw colour on the field.
+
+        // Group up like characters, and draw them in a batch.
+        int repeatCounter = 0;
+        wchar_t lastCharacter = *L"";
+        bool initbatch = true;
+        for (int x = 0; x < c.field.size.x; x++) {
+            for (int y = 0; y < c.field.size.y; y++) {
+                int pos = (y + c.field.padding.y) * screenSize.x + (x + c.field.padding.x);
+                wchar_t symbol = screen[pos];
+
+                if (initbatch) {
+                    repeatCounter = 1;
+                    lastCharacter = symbol;
+                    batchStartPos.X = x + c.field.padding.x;
+                    batchStartPos.Y = y + c.field.padding.y;
+                    initbatch = false;
+                    continue;
+                }
+
+                if (symbol == lastCharacter) {
+                    repeatCounter++;
+                    continue;
+                }
+
+                else {
+                    switch (symbol) {
+                    case * L"I": color = 11; break;
+                    case * L"O": color = 14; break;
+                    case * L"J": color = 19; break;
+                    case * L"L": color = 6; break;
+                    case * L"T": color = 13; break;
+                    case * L"Z": color = 12; break;
+                    case * L"S": color = 10; break;
+                    default: color = 15;
+                    }
+                    WriteConsoleOutputAttribute(hConsole, &color, repeatCounter, batchStartPos, &dwBytesWritten);
+
+                    batchStartPos.X = x + c.field.padding.x;
+                    batchStartPos.Y = y + c.field.padding.y;
+                }
+            }
+        }
     }
 }
