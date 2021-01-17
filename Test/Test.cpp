@@ -375,6 +375,7 @@ public:
 
 int main()
 {
+    bool bDrawColour = true;
     std::srand(11); // Initialize seed for random generation.
     TetrisController c = TetrisController();
 
@@ -389,7 +390,7 @@ int main()
     SetConsoleTextAttribute(hConsole, 3);
     DWORD dwBytesWritten = 0;
     WORD color = 15;
-    COORD batchStartPos;
+    COORD here;
 
     while (!c.gameOver) {
         // Game timing
@@ -433,31 +434,15 @@ int main()
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
 
         // Draw colour on the field.
+        if (bDrawColour) {
+            for (int x = 0; x < c.field.size.x; x++) {
+                for (int y = 0; y < c.field.size.y; y++) {
+                    here.X = x + c.field.padding.x;
+                    here.Y = y + c.field.padding.y;
+                    int pos = here.Y * screenSize.x + here.X;
 
-        // Group up like characters, and draw them in a batch.
-        int repeatCounter = 0;
-        wchar_t lastCharacter = *L"";
-        bool initbatch = true;
-        for (int x = 0; x < c.field.size.x; x++) {
-            for (int y = 0; y < c.field.size.y; y++) {
-                int pos = (y + c.field.padding.y) * screenSize.x + (x + c.field.padding.x);
-                wchar_t symbol = screen[pos];
+                    wchar_t symbol = screen[pos];
 
-                if (initbatch) {
-                    repeatCounter = 1;
-                    lastCharacter = symbol;
-                    batchStartPos.X = x + c.field.padding.x;
-                    batchStartPos.Y = y + c.field.padding.y;
-                    initbatch = false;
-                    continue;
-                }
-
-                if (symbol == lastCharacter) {
-                    repeatCounter++;
-                    continue;
-                }
-
-                else {
                     switch (symbol) {
                     case * L"I": color = 11; break;
                     case * L"O": color = 14; break;
@@ -468,10 +453,7 @@ int main()
                     case * L"S": color = 10; break;
                     default: color = 15;
                     }
-                    WriteConsoleOutputAttribute(hConsole, &color, repeatCounter, batchStartPos, &dwBytesWritten);
-
-                    batchStartPos.X = x + c.field.padding.x;
-                    batchStartPos.Y = y + c.field.padding.y;
+                    WriteConsoleOutputAttribute(hConsole, &color, 1, here, &dwBytesWritten);
                 }
             }
         }
