@@ -151,6 +151,7 @@ public:
     Vect2 padding = Vect2(0, 0);
     Vect2 pieceSpawn = Vect2(4, 0); // Where pieces spawn on the board.
     unsigned char* pField = nullptr;
+    vector<int> lines = {};
 
     TetrisField(int aWidth, int aHeight, int aXPad, int aYPad) {
         size = Vect2(aWidth, aHeight);
@@ -167,6 +168,18 @@ public:
         }
     }
 
+    void ClearLines() {
+        // Move the field down to overwrite the cleared lines.
+        for (auto& v : lines) {
+            for (int x = 1; x < size.x - 1; x++) {
+                for (int y = v; y > 0; y--) {
+                    pField[y * size.x + x] = pField[(y - 1) * size.x + x];
+                }
+                pField[x] = 0;
+            }
+        }
+    }
+
     int pos(int x, int y) {
         return pField[y * size.x + x];
     }
@@ -175,16 +188,33 @@ public:
         return pField[index];
     }
 
-    void ClearLine() {
-
-    }
-
     void AddPiece(Tetromino piece) {
+        // Add the piece to the field
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {
                 int pos = ((piece.pos.y + i) * size.x) + piece.pos.x + j;
                 if (piece.ShapeCell(j, i) == *L"X")
                     pField[pos] = piece.ascii_index;
+            }
+        }
+
+        // Check if any lines were created.
+        for (int y = 0; y < 4; y++) {
+            int liney = y + piece.pos.y;
+            bool bLine = true;
+            // Loop over the line searching for any breaks in the chain.
+            for (int x = 1; x < size.x - 1; x++) {
+                if (pField[liney * size.x + x] == 0) {
+                    bLine = false;
+                    break;
+                }
+            }
+            // If no breaks were found, clear a line.
+            if (bLine) {
+                for (int x = 1; x < size.x - 1; x++) {
+                    pField[liney * size.x + x] = 8;
+                }
+                lines.push_back(liney);
             }
         }
     }
@@ -265,13 +295,17 @@ public:
     bool hardDropHold = false;
     bool rotateHoldRight = false;
     bool rotateHoldLeft = false;
+    bool moveSidewaysLock = false; // This is used to provide a brief pause before the key repeats.
 
     // Tick trackers.
-    const int lockDelay = 20; // How many times the decrement has to fail before forcing the piece to lock.
+    const int lockDelay = 40; // How many ticks the piece has to be touching the ground for it to automatically lock.
     int lockCounter = 0; // How many times the "lock" has failed.
 
-    int speed = 20; // How many ticks need to pass for the piece to descend. 
+    int speed = 30; // How many ticks need to pass for the piece to descend. 
     int speedCounter = 0; // How many ticks have passed since the last descent.
+
+    int sidewaysDelay = 4; // How many ticks the left/right keys have to be held for before repeating.
+    int sidewaysDelayCounter = 0;
 
     void Update() {
         if (currentPiece.isNull) {
@@ -293,11 +327,23 @@ public:
         }
         else hardDropHold = false;
 
-        if (*moveLeft && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(-1, 0)))
+        if (*moveLeft && !moveSidewaysLock && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(-1, 0)))
             currentPiece.pos.x -= 1;
         
-        if (*moveRight && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(1, 0)))
+        if (*moveRight && !moveSidewaysLock && DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(1, 0)))
             currentPiece.pos.x += 1;
+
+        if (*moveLeft || *moveRight) {
+            if (sidewaysDelayCounter < sidewaysDelay) {
+                moveSidewaysLock = true;
+                sidewaysDelayCounter++;
+            }
+            else moveSidewaysLock = false; // Remove the lock after it has been held enough.
+        }
+        else {
+            moveSidewaysLock = false;
+            sidewaysDelayCounter = 0;
+        }
 
         if (*softDrop || speedCounter >= speed)
             SoftDrop();
@@ -360,8 +406,6 @@ public:
         // Add piece to the field.
         field.AddPiece(currentPiece);
 
-        field.ClearLine();
-
         // Get next piece
         NextPiece();
 
@@ -394,7 +438,7 @@ int main()
 
     while (!c.gameOver) {
         // Game timing
-        this_thread::sleep_for(50ms); // A game tick happens this often.
+        this_thread::sleep_for(10ms); // A game tick happens this often.
 
         // Game logic
         c.Update();
@@ -431,6 +475,14 @@ int main()
         // TODO Draw hold
 
         // Draw to console.
+
+        // Check if any lines have been made, and animate their clearing if so.
+        if (!c.field.lines.empty()) {
+            WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
+            this_thread::sleep_for(500ms); // Pause to give impact on the line clear.
+
+        }
+
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
 
         // Draw colour on the field.
@@ -446,7 +498,7 @@ int main()
                     switch (symbol) {
                     case * L"I": color = 11; break;
                     case * L"O": color = 14; break;
-                    case * L"J": color = 19; break;
+                    case * L"J": color = 9; break;
                     case * L"L": color = 6; break;
                     case * L"T": color = 13; break;
                     case * L"Z": color = 12; break;
