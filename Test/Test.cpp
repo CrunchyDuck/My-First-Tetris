@@ -172,12 +172,14 @@ public:
         // Move the field down to overwrite the cleared lines.
         for (auto& v : lines) {
             for (int x = 1; x < size.x - 1; x++) {
-                for (int y = v; y > 0; y--) {
-                    pField[y * size.x + x] = pField[(y - 1) * size.x + x];
+                for (int y = v; y > 0; y--) { // Move lines from above the clear downwards.
+                    int pos = (y * size.x) + x;
+                    pField[pos] = pField[pos - size.x];
                 }
-                pField[x] = 0;
             }
         }
+
+        lines.clear();
     }
 
     int pos(int x, int y) {
@@ -202,19 +204,21 @@ public:
         for (int y = 0; y < 4; y++) {
             int liney = y + piece.pos.y;
             bool bLine = true;
-            // Loop over the line searching for any breaks in the chain.
-            for (int x = 1; x < size.x - 1; x++) {
-                if (pField[liney * size.x + x] == 0) {
-                    bLine = false;
-                    break;
-                }
-            }
-            // If no breaks were found, clear a line.
-            if (bLine) {
+            if (liney < size.y - 1) {
+                // Loop over the line searching for any breaks in the chain.
                 for (int x = 1; x < size.x - 1; x++) {
-                    pField[liney * size.x + x] = 8;
+                    if (pField[liney * size.x + x] == 0) {
+                        bLine = false;
+                        break;
+                    }
                 }
-                lines.push_back(liney);
+                // If no breaks were found, clear a line.
+                if (bLine) {
+                    for (int x = 1; x < size.x - 1; x++) {
+                        pField[liney * size.x + x] = 8;
+                    }
+                    lines.push_back(liney);
+                }
             }
         }
     }
@@ -481,6 +485,7 @@ int main()
             WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
             this_thread::sleep_for(500ms); // Pause to give impact on the line clear.
 
+            c.field.ClearLines();
         }
 
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
