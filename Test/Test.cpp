@@ -101,10 +101,11 @@ public:
     void DrawPiece(wchar_t* screen, int screenWidth, Vect2 piecePos) {
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
-                if (ShapeCell(x, y) != *L".") {
-                    int pos = (piecePos.y + y) * screenWidth + x + piecePos.x;
+                int pos = (piecePos.y + y) * screenWidth + x + piecePos.x;
+                if (ShapeCell(x, y) != *L".")
                     screen[pos] = pieceSymbols[shapeNum];
-                }
+                else
+                    screen[pos] = *L" ";
             }
         }
     }
@@ -495,15 +496,26 @@ int main()
 
         // TODO Draw a ghost of the piece.
 
-        // TODO draw level (slowest speed - speed) / (slowest speed)
+        // TODO draw level/difficulty (slowest speed - speed) / (slowest speed)
 
-        // Draw upcoming box
+
+        // ==== Draw Upcoming ====
+
+        // Draw upcoming pieces
         int const upcomingPieceSpacing = 3;
         int const upcomingPieceNum = 3; // How many upcoming pieces to show.
-
         Vect2 boxOrigin = { c.field.size.x + c.field.padding.x + 2, c.field.padding.y }; // Top right of the field. 
         Vect2 boxSize = { 6, 4 + (upcomingPieceNum * upcomingPieceSpacing) };
         wchar_t letter = *L"";
+
+        Vect2 upcomingPieceOrigin = { boxOrigin.x + 1, boxOrigin.y + 1 };
+        for (int i = 0; i < upcomingPieceNum; i++) {
+            Tetromino upcomingPiece = c.pieceBag.PeekPiece(i + 1);
+            Vect2 piecePos = { upcomingPieceOrigin.x, upcomingPieceOrigin.y + (upcomingPieceSpacing * i) };
+            upcomingPiece.DrawPiece(screen, screenSize.x, piecePos);
+        }
+
+        // Draw upcoming box
         for (int x = 0; x < boxSize.x; x++) {
             for (int y = 0; y < boxSize.y; y++) {
                 int pos = (boxOrigin.y + y) * screenSize.x + boxOrigin.x + x;
@@ -513,7 +525,7 @@ int main()
                         letter = *L"═";
                     }
                     else if (y % upcomingPieceSpacing == 0) // Every 3n - 1. The gaps between up next blocks.
-                        letter = *L"─";
+                        letter = *L"═";
                     else continue;
                 }
                 else if (x == 0) { // Left side.
@@ -522,32 +534,22 @@ int main()
                     else if (y == boxSize.y - 1) // Bottom right corner
                         letter = *L"╚";
                     else if (y % upcomingPieceSpacing == 0) // Every 3n - 1
-                        letter = *L"╟";
+                        letter = *L"╠";
                     else // Left wall
                         letter = *L"║";
                 }
-
                 else { // Right side.
                     if (y == 0) // Top right corner
                         letter = *L"╗";
                     else if (y == boxSize.y - 1) // Bottom right corner
                         letter = *L"╝";
                     else if (y % upcomingPieceSpacing == 0) // Every 3n - 1
-                        letter = *L"╢";
+                        letter = *L"╣";
                     else // Right wall
                         letter = *L"║";
                 }
-
                 screen[pos] = letter;
             }
-        }
-
-        // Draw upcoming pieces
-        Vect2 upcomingPieceOrigin = { boxOrigin.x + 1, boxOrigin.y + 1 };
-        for (int i = 0; i < upcomingPieceNum; i++) {
-            Tetromino upcomingPiece = c.pieceBag.PeekPiece(i + 1);
-            Vect2 piecePos = { upcomingPieceOrigin.x, upcomingPieceOrigin.y + (upcomingPieceSpacing * i) };
-            upcomingPiece.DrawPiece(screen, screenSize.x, piecePos);
         }
 
         // TODO Draw score
