@@ -193,6 +193,23 @@ public:
     }
 
     void ClearLines() {
+        // Flash the colour on the lines for sparkly visuals.
+        for (int i = 0; i < 4; i++) { // Flash 8 times.
+            for (int& v : lines) {
+                COORD linePos = { padding.x + 1, (v + padding.y) };
+                WORD lineColours[10];
+                WORD col[10];
+                std::fill(col, col + 10, 15);
+                int startPos = linePos.Y * screenSize.x + linePos.Y;
+                std::copy(screenColor + startPos, screenColor + startPos + 10, lineColours);
+                
+                WriteConsoleOutputAttribute(hConsole, col, 10, linePos, &dwBytesWritten);
+                this_thread::sleep_for(100ms);
+                WriteConsoleOutputAttribute(hConsole, lineColours, 10, linePos, &dwBytesWritten);
+                this_thread::sleep_for(100ms);
+            }
+        }
+
         // Move the field down to overwrite the cleared lines.
         for (int &v : lines) { // Iterate through each entry in the vector.
             for (int x = 1; x < size.x - 1; x++) {
@@ -588,7 +605,8 @@ int main()
 
         // TODO Draw score
 
-        // TODO Draw hold
+
+        // ==== Draw Held Piece ====
         Vect2 holdBoxSize = { 6, 4 };
         Vect2 holdBoxOrigin = {c.field.padding.x - 2 - holdBoxSize.x, c.field.padding.y}; // Shift the box to the side relative to its size.
         Vect2 holdPieceOrigin = { holdBoxOrigin.x + 1, holdBoxOrigin.y + 1 };
@@ -637,8 +655,7 @@ int main()
         // Check if any lines have been made, and animate their clearing if so.
         if (!c.field.lines.empty()) {
             WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
-            this_thread::sleep_for(500ms); // Pause to give impact on the line clear.
-
+            //this_thread::sleep_for(500ms); // Pause to give impact on the line clear.
             c.field.ClearLines();
         }
 
