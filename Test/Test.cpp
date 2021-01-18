@@ -194,7 +194,9 @@ public:
 
     void ClearLines() {
         // Flash the colour on the lines for sparkly visuals.
-        for (int i = 0; i < 4; i++) { // Flash 8 times.
+        for (int i = 0; i < 6; i++) { // Flash 6 times.
+            auto time = 100ms;
+            bool longFlash = false;
             for (int& v : lines) {
                 COORD linePos = { padding.x + 1, (v + padding.y) };
                 WORD lineColours[10];
@@ -203,11 +205,16 @@ public:
                 int startPos = linePos.Y * screenSize.x + linePos.Y;
                 std::copy(screenColor + startPos, screenColor + startPos + 10, lineColours);
                 
-                WriteConsoleOutputAttribute(hConsole, col, 10, linePos, &dwBytesWritten);
-                this_thread::sleep_for(100ms);
-                WriteConsoleOutputAttribute(hConsole, lineColours, 10, linePos, &dwBytesWritten);
-                this_thread::sleep_for(100ms);
+                if (i % 2 == 0) {
+                    WriteConsoleOutputAttribute(hConsole, col, 10, linePos, &dwBytesWritten);
+                    time = 100ms;
+                }
+                else {
+                    WriteConsoleOutputAttribute(hConsole, lineColours, 10, linePos, &dwBytesWritten);
+                    time = 150ms;
+                }
             }
+            this_thread::sleep_for(time);
         }
 
         // Move the field down to overwrite the cleared lines.
