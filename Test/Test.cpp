@@ -34,8 +34,6 @@ Vect2 screenSize = Vect2(80, 30);
 wchar_t* screen = new wchar_t[screenSize.x * screenSize.y];
 HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 DWORD dwBytesWritten = 0;
-WORD color = 15;
-COORD here;
 
 
 
@@ -456,28 +454,53 @@ public:
 
 void ColourArea(Vect2 pos, Vect2 size) {
     // Colours the given area in.
+    auto colour = [](wchar_t symbol, int count, COORD here) {
+        // Sorry for the magic numbers.
+        WORD color = 15;
+        switch (symbol) {
+        case * L"I": color = 11; break;
+        case * L"O": color = 14; break;
+        case * L"J": color = 9; break;
+        case * L"L": color = 6; break;
+        case * L"T": color = 13; break;
+        case * L"Z": color = 12; break;
+        case * L"S": color = 10; break;
+        default: color = 15;
+        }
+        WriteConsoleOutputAttribute(hConsole, &color, count, here, &dwBytesWritten);
+    };
+    
+    COORD here;
     int xEnd = pos.x + size.x;
     int yEnd = pos.y + size.y;
     for (int x = pos.x; x < xEnd; x++) {
+        bool initBatch = true;
+        wchar_t lastSymbol = *L"";
+        int repeatCounter = 1;
+        here.X = x;
         for (int y = pos.y; y < yEnd; y++) {
-            here.X = x;
-            here.Y = y;
-            int pos = here.Y * screenSize.x + here.X;
-
+            int pos = y * screenSize.x + x;
             wchar_t symbol = screen[pos];
 
-            switch (symbol) {
-            case * L"I": color = 11; break;
-            case * L"O": color = 14; break;
-            case * L"J": color = 9; break;
-            case * L"L": color = 6; break;
-            case * L"T": color = 13; break;
-            case * L"Z": color = 12; break;
-            case * L"S": color = 10; break;
-            default: color = 15;
+            if (initBatch) {
+                lastSymbol = symbol;
+                repeatCounter = 1;
+                here.Y = y;
+                initBatch = false;
+                continue;
             }
-            WriteConsoleOutputAttribute(hConsole, &color, 1, here, &dwBytesWritten);
+            else if (symbol == lastSymbol) {
+                repeatCounter++;
+                continue;
+            }
+            else {
+                colour(lastSymbol, repeatCounter, here);
+                here.Y = y;
+                repeatCounter = 1;
+                lastSymbol = symbol;
+            }
         }
+        colour(lastSymbol, repeatCounter, here); // Any time y changes we need to cause a drawing batch break.
     }
 }
 
