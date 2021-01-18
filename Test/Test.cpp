@@ -36,8 +36,6 @@ WORD* screenColor = new WORD[screenSize.x * screenSize.y];
 HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 DWORD dwBytesWritten = 0;
 
-
-
 class Tetromino {
 public:
     // Maybe I could package these variables into a struct.
@@ -46,8 +44,12 @@ public:
     int ascii_index; // This what index in the ascii symbol array the piece will use when displayed. Not a good system, should be replaced when I rework this.
     int pieceGridSize; // This is used for rotation, to determine where the origin point of the piece is.
     int shapeNum;
+    vector<vector<vector<Vect2>>> static wallKicks; // When a piece rotation fails it goes through these offsets to figure out where something should go.
+    int rotationPos = 0; // This is used 
     wchar_t static pieceSymbols[];
     Vect2 pos = Vect2(0, 0);
+
+
 
     // First dimension is the block, second is y position, third is x position.
     // 0-6, pieces are: i, o, l, j, s, z, t
@@ -71,12 +73,29 @@ public:
         pos = Vect2(0, 0);
     }
 
-    vector<wstring> RotateLeft() {
-        return Rotate(shape, pieceGridSize, false);
+    void RotateLeft() {
+        shape = Rotate(shape, pieceGridSize, false);
+        rotationPos -= 1;
+        if (rotationPos < 0)
+            rotationPos = 3;
     }
 
-    vector<wstring> RotateRight() {
-        return Rotate(shape, pieceGridSize, true);
+    void RotateRight() {
+        shape = Rotate(shape, pieceGridSize, true);
+        rotationPos += 1;
+        if (rotationPos > 3)
+            rotationPos = 0;
+    }
+
+    void SetRotation(int desiredPos) {
+        int diff = desiredPos - rotationPos;
+        while (diff != 0) {
+            if (diff > 0)
+                RotateLeft();
+            else
+                RotateRight();
+            diff = desiredPos - rotationPos;
+        }
     }
 
     static vector<wstring> Rotate(vector<wstring> aPiece, int size, bool clockwise = true) {
@@ -167,6 +186,70 @@ vector<vector<wstring>> Tetromino::tetrominos = {
         }
 };
 wchar_t Tetromino::pieceSymbols[] = L"IOLJSZT";
+// This is absolutely not the fastest way to calculate all of this stuff.
+// But is it the fastest way for me to implement it into my code? Yes.
+// Based on https://tetris.wiki/Super_Rotation_System#Wall_Kicks
+vector<vector<vector<Vect2>>> Tetromino::wallKicks = { // SRS rotation checking thing.
+    // every piece except i
+    {
+        //0R 2R
+        {
+            {-1, 0}, // Test 2. Because test 1 is no offset
+            {-1, -1},
+            {0, 2},
+            {-1, 2}
+        },
+        //R0 R2
+        {
+            {1, 0},
+            {1, 1},
+            {0, -2},
+            {1, -2}
+        },
+        //2L 0L
+        {
+            {1, 0},
+            {1, -1},
+            {0, 2},
+            {1, 2}
+        },
+        //L2 L0
+        {
+            {-1, 0},
+            {-1, 1},
+            {0, -2},
+            {-1, -2}
+        }
+    },
+    // i
+    {
+        { //0R L2
+            {-2, 0},
+            {1, 0},
+            {-2, 1},
+            {1, -2}
+        },
+        { //R0 2L
+            {2, 0},
+            {-1, 0},
+            {2, -1},
+            {-1, 2}
+        },
+        { //R2 0L
+            {-1, 0},
+            {2, 0},
+            {-1, -2},
+            {2, 1}
+        },
+        { //2R L0
+            {1, 0},
+            {-2, 0},
+            {1, 2},
+            {-2, -1}
+        }
+    }
+};
+
 
 
 class TetrisField {
@@ -360,7 +443,7 @@ public:
     bool moveSidewaysLock = false; // This is used to provide a brief pause before the key repeats.
 
     // Tick trackers.
-    const int lockDelay = 40; // How many ticks the piece has to be touching the ground for it to automatically lock.
+    const int lockDelay = 60; // How many ticks the piece has to be touching the ground for it to automatically lock.
     int lockCounter = 0; // How many times the "lock" has failed.
 
     // TODO figure out when to increase the speed.
@@ -413,18 +496,12 @@ public:
 
         // TODO: Implement kicking
         if (*rotateLeft) {
-            if (!rotateHoldLeft && DoesPieceFit(field, currentPiece.RotateLeft(), currentPiece.pos)) {
-                currentPiece.shape = currentPiece.RotateLeft();
-            }
-            rotateHoldLeft = true;
+            RotateLeft();
         }
         else rotateHoldLeft = false;
 
         if (*rotateRight) {
-            if (!rotateHoldRight && DoesPieceFit(field, currentPiece.RotateRight(), currentPiece.pos)) {
-                currentPiece.shape = currentPiece.RotateRight();
-            }
-            rotateHoldRight = true;
+            RotateRight();
         }
         else rotateHoldRight = false;
 
@@ -439,6 +516,96 @@ public:
         // Piece has been against the ground long enough to force it to lock.
         if (lockCounter >= lockDelay)
             LockPiece();
+    }
+
+
+    void RotateRight() {
+        /// <summary>
+        /// Rotate the piece, see if it fits. If not, try to "kick" it to a new pot. If not, rotate it back.
+        /// </summary>
+        if (rotateHoldRight) return;
+        rotateHoldRight = true;
+        int orientation = currentPiece.rotationPos;
+        currentPiece.RotateRight();
+        vector<wstring> rotatedPiece = currentPiece.shape;
+
+        // If the piece can rotate normally, do so.
+        if (DoesPieceFit(field, rotatedPiece, currentPiece.pos))
+            return;
+
+        // Attempt to wall kick.
+        // Figure out which wall kicks to do
+        vector<Vect2> kickAttempts;
+        if (currentPiece.shapeNum == 0) { // I piece.
+            switch (orientation) {
+            case 0: kickAttempts = Tetromino::wallKicks[1][0]; break;
+            case 1: kickAttempts = Tetromino::wallKicks[1][2]; break;
+            case 2: kickAttempts = Tetromino::wallKicks[1][1]; break;
+            case 3: kickAttempts = Tetromino::wallKicks[1][3]; break;
+            }
+        }
+        else {
+            switch (orientation) {
+            case 0: kickAttempts = Tetromino::wallKicks[0][0]; break;
+            case 1: kickAttempts = Tetromino::wallKicks[0][1]; break;
+            case 2: kickAttempts = Tetromino::wallKicks[0][2]; break;
+            case 3: kickAttempts = Tetromino::wallKicks[0][3]; break;
+            }
+        }
+
+        // Attempt wallkicks
+        for (auto& offset : kickAttempts) {
+            if (DoesPieceFit(field, rotatedPiece, currentPiece.pos + offset)) {
+                currentPiece.pos = currentPiece.pos + offset;
+                return;
+            }
+        }
+        currentPiece.RotateLeft();
+    }
+    
+
+    void RotateLeft() {
+        /// <summary>
+        /// Rotate the piece, see if it fits. If not, try to "kick" it to a new pot. If not, rotate it back.
+        /// </summary>
+        if (rotateHoldLeft) return;
+        rotateHoldLeft = true;
+        int orientation = currentPiece.rotationPos;
+        currentPiece.RotateLeft();
+        vector<wstring> rotatedPiece = currentPiece.shape;
+
+        // If the piece can rotate normally, do so.
+        if (DoesPieceFit(field, rotatedPiece, currentPiece.pos))
+            return;
+        
+        // Attempt to wall kick
+        // Figure out which wall kicks to do
+        vector<Vect2> kickAttempts;
+        if (currentPiece.shapeNum == 0) { // I piece.
+            switch (orientation) {
+            case 0: kickAttempts = Tetromino::wallKicks[1][2]; break;
+            case 1: kickAttempts = Tetromino::wallKicks[1][1]; break;
+            case 2: kickAttempts = Tetromino::wallKicks[1][3]; break;
+            case 3: kickAttempts = Tetromino::wallKicks[1][0]; break;
+            }
+        }
+        else {
+            switch (orientation) {
+            case 0: kickAttempts = Tetromino::wallKicks[0][2]; break;
+            case 1: kickAttempts = Tetromino::wallKicks[0][1]; break;
+            case 2: kickAttempts = Tetromino::wallKicks[0][0]; break;
+            case 3: kickAttempts = Tetromino::wallKicks[0][3]; break;
+            }
+        }
+
+        // Attempt wallkicks
+        for (auto& offset : kickAttempts) {
+            if (DoesPieceFit(field, rotatedPiece, currentPiece.pos + offset)) {
+                currentPiece.pos = currentPiece.pos + offset;
+                return;
+            }
+        }
+        currentPiece.RotateRight();
     }
 
 
@@ -488,6 +655,7 @@ public:
 
 
     void HoldPiece() {
+        currentPiece.SetRotation(0); // Reset it to default rotation for when it's stored.
         Tetromino swapper = currentPiece; // Hold a pointer to the current piece.
         if (heldPiece.isNull)
             NextPiece(); // First time holding, get a new piece.
@@ -654,8 +822,6 @@ int main()
                 screen[pos] = letter;
             }
         }
-
-        
 
 
         // ========== Display surface ==========
