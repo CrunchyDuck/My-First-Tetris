@@ -1,4 +1,4 @@
-// Test.cpp : This file contains the 'main' function. Program execution begins and ends there.
+﻿// Test.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include <iostream>
@@ -36,6 +36,7 @@ public:
     int ascii_index; // This what index in the ascii symbol array the piece will use when displayed. Not a good system, should be replaced when I rework this.
     int pieceGridSize; // This is used for rotation, to determine where the origin point of the piece is.
     int shapeNum;
+    wchar_t static pieceSymbols[];
     Vect2 pos = Vect2(0, 0);
 
     // First dimension is the block, second is y position, third is x position.
@@ -96,6 +97,15 @@ public:
     static wchar_t ShapeCell(vector<wstring> shape, int x, int y) {
         return shape[y][x];
     }
+
+    void DrawPiece(wchar_t* screen, int screenWidth, Vect2 piecePos) {
+        for (int x = 0; x < 4; x++) {
+            for (int y = 0; y < 4; y++) {
+                int pos = (piecePos.y + y) * screenWidth + x + piecePos.x;
+                screen[pos] = pieceSymbols[shapeNum];
+            }
+        }
+    }
 };
 
 // I don't quite get why C++ requires this weird cemantic way of declaring static variables.
@@ -143,6 +153,7 @@ vector<vector<wstring>> Tetromino::tetrominos = {
             L"...."
         }
 };
+wchar_t Tetromino::pieceSymbols[] = L"IOLJSZT";
 
 
 class TetrisField {
@@ -170,7 +181,7 @@ public:
 
     void ClearLines() {
         // Move the field down to overwrite the cleared lines.
-        for (auto& v : lines) {
+        for (int &v : lines) { // Iterate through each entry in the vector.
             for (int x = 1; x < size.x - 1; x++) {
                 for (int y = v; y > 0; y--) { // Move lines from above the clear downwards.
                     int pos = (y * size.x) + x;
@@ -243,6 +254,13 @@ public:
         return currentBag[bagIndex];
     }
 
+    Tetromino PeekPiece(int distance) {
+        // See what piece is coming in the future by distance. Cannot be more than 7.
+        int peekPos = bagIndex + distance;
+        if (peekPos < 7) return currentBag[peekPos];
+        else return nextBag[peekPos % 7];
+    }
+
 private:
     void NextBag() {
         bagIndex = 0;
@@ -305,6 +323,7 @@ public:
     const int lockDelay = 40; // How many ticks the piece has to be touching the ground for it to automatically lock.
     int lockCounter = 0; // How many times the "lock" has failed.
 
+    // TODO figure out when to increase the speed.
     int speed = 30; // How many ticks need to pass for the piece to descend. 
     int speedCounter = 0; // How many ticks have passed since the last descent.
 
@@ -447,7 +466,9 @@ int main()
         // Game logic
         c.Update();
 
-        // ========== Render output ==========
+        // ========== Draw to surface ==========
+
+        // I might move these onto the objects as a .Draw event in the future.
 
         // Draw the field.
         for (int x = 0; x < c.field.size.x; x++) {
@@ -472,14 +493,56 @@ int main()
 
         // TODO Draw a ghost of the piece.
 
-        // TODO Draw upcoming
+        // TODO draw level (slowest speed - speed) / (slowest speed)
+
+        // Draw upcoming box
+        Vect2 boxOrigin = { c.field.size.x + c.field.padding.x + 2, c.field.padding.y }; // Top right of the field. 
+        Vect2 boxSize = { 7, 5 };
+        wchar_t letter = *L"";
+        for (int x = 0; x < boxSize.x; x++) {
+            for (int y = 0; y < boxSize.y; y++) {
+                int pos = (boxOrigin.y + y) * screenSize.x + boxOrigin.x + x;
+                // Might have been able to use switch for this.
+                if (x > 0 && x < boxSize.x - 1) { // Middle section.
+                    if (y == 0 || y == boxSize.y - 1) { // Top wall
+                        letter = *L"═";
+                    }
+                    else continue;
+                }
+                else if (x == 0) {
+                    if (y == 0) letter = *L"╔";
+                    else if (y == boxSize.y - 1) letter = *L"╚";
+                    else letter = *L"║";
+                }
+
+                else { // Right wall.
+                    if (y == 0) letter = *L"╗";
+                    else if (y == boxSize.y - 1) letter = *L"╝";
+                    else letter = *L"║";
+                }
+
+                screen[pos] = letter;
+            }
+        }
+
+        // Draw upcoming pieces
+        Vect2 upcomingPieceOrigin = { boxOrigin.x + 1, boxOrigin.y + 1 };
+        int upcomingPieceSpacing = 4;
+        int upcomingPieceNum = 3; // How many upcoming pieces to show.
+        for (int i = 0; i < upcomingPieceNum; i++) {
+            Tetromino upcomingPiece = c.pieceBag.PeekPiece(i + 1);
+            Vect2 piecePos = { upcomingPieceOrigin.x, upcomingPieceOrigin.y + (upcomingPieceSpacing * i) };
+            upcomingPiece.DrawPiece(screen, screenSize.x, piecePos);
+        }
 
         // TODO Draw score
 
         // TODO Draw hold
+        // Hold boxes
+        
 
-        // Draw to console.
 
+        // ========== Display surface ==========
         // Check if any lines have been made, and animate their clearing if so.
         if (!c.field.lines.empty()) {
             WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
