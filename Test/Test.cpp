@@ -28,6 +28,17 @@ public:
 };
 
 
+// Declaring these as global because I don't want a disgusting chain of variable passing.
+// Create Screen Buffer
+Vect2 screenSize = Vect2(80, 30);
+wchar_t* screen = new wchar_t[screenSize.x * screenSize.y];
+HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+DWORD dwBytesWritten = 0;
+WORD color = 15;
+COORD here;
+
+
+
 class Tetromino {
 public:
     // Maybe I could package these variables into a struct.
@@ -443,6 +454,34 @@ public:
 };
 
 
+void ColourArea(Vect2 pos, Vect2 size) {
+    // Colours the given area in.
+    int xEnd = pos.x + size.x;
+    int yEnd = pos.y + size.y;
+    for (int x = pos.x; x < xEnd; x++) {
+        for (int y = pos.y; y < yEnd; y++) {
+            here.X = x;
+            here.Y = y;
+            int pos = here.Y * screenSize.x + here.X;
+
+            wchar_t symbol = screen[pos];
+
+            switch (symbol) {
+            case * L"I": color = 11; break;
+            case * L"O": color = 14; break;
+            case * L"J": color = 9; break;
+            case * L"L": color = 6; break;
+            case * L"T": color = 13; break;
+            case * L"Z": color = 12; break;
+            case * L"S": color = 10; break;
+            default: color = 15;
+            }
+            WriteConsoleOutputAttribute(hConsole, &color, 1, here, &dwBytesWritten);
+        }
+    }
+}
+
+
 int main()
 {
     bool bDrawColour = true;
@@ -450,17 +489,10 @@ int main()
     TetrisController c = TetrisController();
 
     wchar_t asciiSub[] = L" IOLJSZT=#"; // Each grid space is given a number. This number is substituted for a character in this string when rendering.
-    Vect2 screenSize = Vect2(80, 30);
-    
-    // Create Screen Buffer
-    wchar_t *screen = new wchar_t[screenSize.x * screenSize.y];
+
     for (int i = 0; i < screenSize.x * screenSize.y; i++) screen[i] = L' ';
-    HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
     SetConsoleActiveScreenBuffer(hConsole);
     SetConsoleTextAttribute(hConsole, 3);
-    DWORD dwBytesWritten = 0;
-    WORD color = 15;
-    COORD here;
 
     while (!c.gameOver) {
         // Game timing
@@ -503,9 +535,9 @@ int main()
 
         // Draw upcoming pieces
         int const upcomingPieceSpacing = 3;
-        int const upcomingPieceNum = 3; // How many upcoming pieces to show.
+        int const upcomingPieceNum = 5; // How many upcoming pieces to show.
         Vect2 boxOrigin = { c.field.size.x + c.field.padding.x + 2, c.field.padding.y }; // Top right of the field. 
-        Vect2 boxSize = { 6, 4 + (upcomingPieceNum * upcomingPieceSpacing) };
+        Vect2 boxSize = { 6, 4 + ((upcomingPieceNum - 1) * upcomingPieceSpacing) };
         wchar_t letter = *L"";
 
         Vect2 upcomingPieceOrigin = { boxOrigin.x + 1, boxOrigin.y + 1 };
@@ -571,28 +603,10 @@ int main()
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
 
         // Draw colour on the field.
+        // There are many better ways to do this that I didn't implement.
         if (bDrawColour) {
-            for (int x = 0; x < c.field.size.x; x++) {
-                for (int y = 0; y < c.field.size.y; y++) {
-                    here.X = x + c.field.padding.x;
-                    here.Y = y + c.field.padding.y;
-                    int pos = here.Y * screenSize.x + here.X;
-
-                    wchar_t symbol = screen[pos];
-
-                    switch (symbol) {
-                    case * L"I": color = 11; break;
-                    case * L"O": color = 14; break;
-                    case * L"J": color = 9; break;
-                    case * L"L": color = 6; break;
-                    case * L"T": color = 13; break;
-                    case * L"Z": color = 12; break;
-                    case * L"S": color = 10; break;
-                    default: color = 15;
-                    }
-                    WriteConsoleOutputAttribute(hConsole, &color, 1, here, &dwBytesWritten);
-                }
-            }
+            ColourArea(c.field.padding, c.field.size);
+            ColourArea(boxOrigin, boxSize);
         }
     }
 }
