@@ -32,6 +32,7 @@ public:
 // Create Screen Buffer
 Vect2 screenSize = Vect2(80, 30);
 wchar_t* screen = new wchar_t[screenSize.x * screenSize.y];
+WORD* screenColor = new WORD[screenSize.x * screenSize.y];
 HANDLE hConsole = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 DWORD dwBytesWritten = 0;
 
@@ -452,59 +453,6 @@ public:
 };
 
 
-void ColourArea(Vect2 pos, Vect2 size) {
-    // Colours the given area in.
-    auto colour = [](wchar_t symbol, int count, COORD here) {
-        // Sorry for the magic numbers.
-        WORD color = 15;
-        switch (symbol) {
-        case * L"I": color = 11; break;
-        case * L"O": color = 14; break;
-        case * L"J": color = 9; break;
-        case * L"L": color = 6; break;
-        case * L"T": color = 13; break;
-        case * L"Z": color = 12; break;
-        case * L"S": color = 10; break;
-        default: color = 15;
-        }
-        WriteConsoleOutputAttribute(hConsole, &color, count, here, &dwBytesWritten);
-    };
-    
-    COORD here;
-    int xEnd = pos.x + size.x;
-    int yEnd = pos.y + size.y;
-    for (int x = pos.x; x < xEnd; x++) {
-        bool initBatch = true;
-        wchar_t lastSymbol = *L"";
-        int repeatCounter = 1;
-        here.X = x;
-        for (int y = pos.y; y < yEnd; y++) {
-            int pos = y * screenSize.x + x;
-            wchar_t symbol = screen[pos];
-
-            if (initBatch) {
-                lastSymbol = symbol;
-                repeatCounter = 1;
-                here.Y = y;
-                initBatch = false;
-                continue;
-            }
-            else if (symbol == lastSymbol) {
-                repeatCounter++;
-                continue;
-            }
-            else {
-                colour(lastSymbol, repeatCounter, here);
-                here.Y = y;
-                repeatCounter = 1;
-                lastSymbol = symbol;
-            }
-        }
-        colour(lastSymbol, repeatCounter, here); // Any time y changes we need to cause a drawing batch break.
-    }
-}
-
-
 int main()
 {
     bool bDrawColour = true;
@@ -626,10 +574,23 @@ int main()
         WriteConsoleOutputCharacter(hConsole, screen, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
 
         // Draw colour on the field.
-        // There are many better ways to do this that I didn't implement.
         if (bDrawColour) {
-            ColourArea(c.field.padding, c.field.size);
-            ColourArea(boxOrigin, boxSize);
+            for (int x = 0; x < screenSize.x; x++) {
+                for (int y = 0; y < screenSize.y; y++) {
+                    int pos = y * screenSize.x + x;
+                    switch (screen[pos]) {
+                    case * L"I": screenColor[pos] = 11; break; // Sorry for the magic numbers.
+                    case * L"O": screenColor[pos] = 14; break;
+                    case * L"J": screenColor[pos] = 9; break;
+                    case * L"L": screenColor[pos] = 6; break;
+                    case * L"T": screenColor[pos] = 13; break;
+                    case * L"Z": screenColor[pos] = 12; break;
+                    case * L"S": screenColor[pos] = 10; break;
+                    default: screenColor[pos] = 15;
+                    }
+                }
+            }
+            WriteConsoleOutputAttribute(hConsole, screenColor, screenSize.x * screenSize.y, { 0, 0 }, &dwBytesWritten);
         }
     }
 }
