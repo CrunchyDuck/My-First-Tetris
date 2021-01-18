@@ -172,7 +172,7 @@ wchar_t Tetromino::pieceSymbols[] = L"IOLJSZT";
 class TetrisField {
 public:
     Vect2 size = Vect2(0,0); // Width and height of the field.
-    Vect2 padding = Vect2(0, 0);
+    Vect2 padding = Vect2(0, 0); // Should have called this "spawn"
     Vect2 pieceSpawn = Vect2(4, 0); // Where pieces spawn on the board.
     unsigned char* pField = nullptr;
     vector<int> lines = {};
@@ -306,19 +306,21 @@ bool DoesPieceFit(TetrisField field, vector<wstring> shape, Vect2 pos, Vect2 pos
 
 
 class TetrisController {
+// When making these objects, I should have documented the children and parent objects. This would allow fluid chains of interaction.
 // An object that handles all the input a player can do.
 public:
-    // Codes: space, A, W, D, S, left arrow, right arrow.
-    char keyBinds[8] = "\x20\AWDS\x25\x27";
+    // Codes: space, A, W, D, S, left arrow, right arrow, R.
+    char keyBinds[9] = "\x20\AWDS\x25\x27\R";
 
-    Tetromino currentPiece = Tetromino(-1);
-    TetrisField field = TetrisField(12, 20, 5, 3);
-
+    Tetromino currentPiece = Tetromino(-1); // I could have made this a null pointer, but I didn't know those existed at the time.
+    Tetromino heldPiece = Tetromino(-1);
+    TetrisField field = TetrisField(12, 20, 20, 3);
     PieceBag pieceBag = PieceBag();
 
     bool gameOver = false;
+    bool bHeldPiece = false; // Cannot hold a piece again until they place their current one down.
 
-    bool inputArray[7];
+    bool inputArray[8];
     bool *holdPiece = &inputArray[0];
     bool *moveLeft = &inputArray[1];
     bool *moveRight = &inputArray[3];
@@ -326,6 +328,7 @@ public:
     bool *softDrop = &inputArray[4];
     bool *rotateLeft = &inputArray[5];
     bool *rotateRight = &inputArray[6];
+    bool *restart = &inputArray[7];
 
     bool hardDropHold = false;
     bool rotateHoldRight = false;
@@ -337,10 +340,10 @@ public:
     int lockCounter = 0; // How many times the "lock" has failed.
 
     // TODO figure out when to increase the speed.
-    int speed = 30; // How many ticks need to pass for the piece to descend. 
+    int speed = 50; // How many ticks need to pass for the piece to descend. 
     int speedCounter = 0; // How many ticks have passed since the last descent.
 
-    int sidewaysDelay = 4; // How many ticks the left/right keys have to be held for before repeating.
+    int sidewaysDelay = 6; // How many ticks the left/right keys have to be held for before repeating.
     int sidewaysDelayCounter = 0;
 
     void Update() {
@@ -401,6 +404,9 @@ public:
         }
         else rotateHoldRight = false;
 
+        if (*holdPiece && !bHeldPiece)
+            HoldPiece();
+
         // Check if there is a collision directly below the piece. If so, the piece will increase the "lock" counter.
         if (!DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(0, 1))) {
             lockCounter++;
@@ -422,6 +428,9 @@ public:
 
 
     bool SoftDrop() {
+        /// <summary>
+        /// Tries to move the piece down. If it cannot, return false.
+        /// </summary>
         speedCounter = 0;
         if (DoesPieceFit(field, currentPiece.shape, currentPiece.pos, Vect2(0, 1))) {
             currentPiece.pos.y += 1;
@@ -430,11 +439,13 @@ public:
         else return false;
     }
 
-    // TODO: These.
+
     void NextPiece() {
         currentPiece = pieceBag.NextPiece();
         currentPiece.pos = field.pieceSpawn;
+        bHeldPiece = false;
     }
+
 
     void LockPiece() {
         lockCounter = 0;
@@ -449,6 +460,26 @@ public:
         if (!DoesPieceFit(field, currentPiece.shape, currentPiece.pos)){
             gameOver = true;
         }
+    }
+
+
+    void HoldPiece() {
+        Tetromino swapper = currentPiece; // Hold a pointer to the current piece.
+        if (heldPiece.isNull)
+            NextPiece(); // First time holding, get a new piece.
+        else 
+            currentPiece = heldPiece; // Fetch the held Tetromino piece.
+        heldPiece = swapper;
+
+        currentPiece.pos = field.pieceSpawn;
+        // If they swap to a piece that can't spawn, they'll lose.
+        if (!DoesPieceFit(field, currentPiece.shape, currentPiece.pos)) {
+            gameOver = true;
+        }
+
+        bHeldPiece = true;
+        speedCounter = 0;
+        lockCounter = 0;
     }
 };
 
@@ -476,7 +507,7 @@ int main()
 
         // I might move these onto the objects as a .Draw event in the future.
 
-        // Draw the field.
+        // Draw the field to surface.
         for (int x = 0; x < c.field.size.x; x++) {
             for (int y = 0; y < c.field.size.y; y++) {
                 // Checks a position in pField for the related number,
@@ -487,7 +518,7 @@ int main()
             }
         }
 
-        // Draw current piece
+        // Draw current piece to surface
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
                 if (c.currentPiece.ShapeCell(x, y) == *L"X") {
@@ -508,7 +539,7 @@ int main()
         int const upcomingPieceSpacing = 3;
         int const upcomingPieceNum = 5; // How many upcoming pieces to show.
         Vect2 boxOrigin = { c.field.size.x + c.field.padding.x + 2, c.field.padding.y }; // Top right of the field. 
-        Vect2 boxSize = { 6, 4 + ((upcomingPieceNum - 1) * upcomingPieceSpacing) };
+        Vect2 boxSize = { 6, 1 + ((upcomingPieceNum) * upcomingPieceSpacing) };
         wchar_t letter = *L"";
 
         Vect2 upcomingPieceOrigin = { boxOrigin.x + 1, boxOrigin.y + 1 };
@@ -558,7 +589,47 @@ int main()
         // TODO Draw score
 
         // TODO Draw hold
-        // Hold boxes
+        Vect2 holdBoxSize = { 6, 4 };
+        Vect2 holdBoxOrigin = {c.field.padding.x - 2 - holdBoxSize.x, c.field.padding.y}; // Shift the box to the side relative to its size.
+        Vect2 holdPieceOrigin = { holdBoxOrigin.x + 1, holdBoxOrigin.y + 1 };
+        Vect2 piecePos = { holdPieceOrigin.x, holdPieceOrigin.y };
+
+        // Draw the held piece
+        if (!c.heldPiece.isNull) {
+            c.heldPiece.DrawPiece(screen, screenSize.x, piecePos);
+        }
+
+        // Draw the box for the held piece.
+        for (int x = 0; x < holdBoxSize.x; x++) {
+            for (int y = 0; y < holdBoxSize.y; y++) {
+                int pos = (holdBoxOrigin.y + y) * screenSize.x + holdBoxOrigin.x + x;
+                // Might have been able to use switch for this.
+                if (x > 0 && x < holdBoxSize.x - 1) { // Between left and right side.
+                    if (y == 0 || y == holdBoxSize.y - 1) { // Top and bottom
+                        letter = *L"═";
+                    }
+                    else continue;
+                }
+                else if (x == 0) { // Left side.
+                    if (y == 0) // Top left corner.
+                        letter = *L"╔";
+                    else if (y == holdBoxSize.y - 1) // Bottom right corner
+                        letter = *L"╚";
+                    else // Left wall
+                        letter = *L"║";
+                }
+                else { // Right side.
+                    if (y == 0) // Top right corner
+                        letter = *L"╗";
+                    else if (y == holdBoxSize.y - 1) // Bottom right corner
+                        letter = *L"╝";
+                    else // Right wall
+                        letter = *L"║";
+                }
+                screen[pos] = letter;
+            }
+        }
+
         
 
 
